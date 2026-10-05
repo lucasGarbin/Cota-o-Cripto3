@@ -1,0 +1,11 @@
+{
+  "name": "Cotação Cripto3",
+  "short_name": "Cripto3",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#06131F",
+  "theme_color": "#06131F",
+  "description": "Cotação Cripto3 em Flutter",
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false
+}
