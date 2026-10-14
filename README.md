@@ -90,3 +90,16 @@ Nunca coloque Secret dentro de Flutter Web, APK ou AAB.
 - A moeda de destino do conversor não é mais limitada a BRL/USD/EUR/GBP/JPY.
 - O seletor de destino é pesquisável e usa dinamicamente todas as moedas presentes em `rates` no retorno da Coinbase.
 - O gráfico continua baseado no par `{MOEDA}-USD`; moedas sem mercado USD podem não possuir candles históricos.
+
+
+## Correção 2.3 — favoritos e gráficos
+
+Correção pontual do fluxo de favoritos/gráfico:
+
+- a tela Moedas agora usa `/v2/currencies/crypto` para listar criptomoedas;
+- a lista é cruzada com `/api/v3/brokerage/market/products`;
+- somente ativos com produto SPOT em USD podem ser favoritados;
+- favoritos antigos sem mercado USD são removidos ao inicializar;
+- ao remover o favorito atualmente selecionado, outra favorita válida é selecionada e o gráfico é recarregado;
+- respostas antigas de requests são ignoradas se o usuário trocar de ativo/período antes da resposta terminar;
+- o restante do layout, conversor, tema e navegação foi preservado.

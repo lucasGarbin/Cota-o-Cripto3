@@ -1,14 +1,22 @@
 class ApiConstants {
   ApiConstants._();
 
+  /// Lista de moedas fiduciárias. Mantida para nomes usados no conversor.
   static const String currencies =
       'https://api.coinbase.com/v2/currencies';
+
+  /// Lista de criptomoedas. É a fonte correta para a tela Moedas/favoritos.
+  static const String cryptoCurrencies =
+      'https://api.coinbase.com/v2/currencies/crypto';
 
   static const String exchangeRates =
       'https://api.coinbase.com/v2/exchange-rates';
 
   static const String publicBrokerageBase =
       'https://api.coinbase.com/api/v3/brokerage/market';
+
+  static const String publicProducts =
+      '$publicBrokerageBase/products';
 
   static String publicCandles(String productId) =>
       '$publicBrokerageBase/products/$productId/candles';

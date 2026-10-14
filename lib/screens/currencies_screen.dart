@@ -120,11 +120,11 @@ class _CurrenciesScreenState extends State<CurrenciesScreen> {
                 ),
                 SizedBox(height: 8),
                 SelectableText(
-                  'GET https://api.coinbase.com/v2/currencies',
+                  'GET https://api.coinbase.com/v2/currencies/crypto',
                   style: TextStyle(fontFamily: 'monospace'),
                 ),
                 SizedBox(height: 8),
-                Text('Principais campos: data, id, name e min_size.'),
+                Text('A lista é cruzada com os produtos SPOT em USD para permitir gráficos válidos.'),
               ],
             ),
           ),

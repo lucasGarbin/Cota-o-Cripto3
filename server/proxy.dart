@@ -10,7 +10,7 @@ Future<void> main() async {
     proxyPort,
   );
 
-  stdout.writeln('Cotação Cripto3 - proxy de candles ativo');
+  stdout.writeln('Cotação Cripto3 - proxy de mercado ativo');
   stdout.writeln('http://127.0.0.1:$proxyPort');
   stdout.writeln('Mantenha esta janela aberta enquanto usar o Flutter Web.');
 
@@ -23,21 +23,34 @@ Future<void> main() async {
       continue;
     }
 
-    if (request.method != 'GET' || request.uri.path != '/api/candles') {
+    if (request.method != 'GET') {
       await _json(
         request.response,
-        HttpStatus.notFound,
-        {'error': 'Rota não encontrada.'},
+        HttpStatus.methodNotAllowed,
+        {'error': 'Método não permitido.'},
       );
       continue;
     }
 
-    await _handleCandles(request);
+    if (request.uri.path == '/api/candles') {
+      await _handleCandles(request);
+      continue;
+    }
+
+    if (request.uri.path == '/api/products') {
+      await _handleProducts(request);
+      continue;
+    }
+
+    await _json(
+      request.response,
+      HttpStatus.notFound,
+      {'error': 'Rota não encontrada.'},
+    );
   }
 }
 
 Future<void> _handleCandles(HttpRequest request) async {
-  final response = request.response;
   final params = request.uri.queryParameters;
 
   final productId = params['product_id']?.trim() ?? '';
@@ -51,7 +64,7 @@ Future<void> _handleCandles(HttpRequest request) async {
       end.isEmpty ||
       granularity.isEmpty) {
     await _json(
-      response,
+      request.response,
       HttpStatus.badRequest,
       {
         'error':
@@ -72,6 +85,28 @@ Future<void> _handleCandles(HttpRequest request) async {
     },
   );
 
+  await _forward(request.response, coinbaseUri);
+}
+
+Future<void> _handleProducts(HttpRequest request) async {
+  final params = request.uri.queryParameters;
+
+  final coinbaseUri = Uri.https(
+    coinbaseHost,
+    '/api/v3/brokerage/market/products',
+    {
+      'product_type': params['product_type'] ?? 'SPOT',
+      'get_all_products': params['get_all_products'] ?? 'true',
+    },
+  );
+
+  await _forward(request.response, coinbaseUri);
+}
+
+Future<void> _forward(
+  HttpResponse response,
+  Uri coinbaseUri,
+) async {
   final client = HttpClient()
     ..connectionTimeout = const Duration(seconds: 15);
 
@@ -80,7 +115,7 @@ Future<void> _handleCandles(HttpRequest request) async {
     outbound.headers.set(HttpHeaders.acceptHeader, 'application/json');
     outbound.headers.set(
       HttpHeaders.userAgentHeader,
-      'CotacaoCripto3/2.1',
+      'CotacaoCripto3/2.3',
     );
 
     final coinbaseResponse = await outbound.close();
@@ -106,7 +141,10 @@ Future<void> _handleCandles(HttpRequest request) async {
 void _setCors(HttpResponse response) {
   response.headers.set('Access-Control-Allow-Origin', '*');
   response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  response.headers.set('Access-Control-Allow-Headers', 'Accept, Content-Type');
+  response.headers.set(
+    'Access-Control-Allow-Headers',
+    'Accept, Content-Type',
+  );
   response.headers.set('Cache-Control', 'no-store');
 }
 

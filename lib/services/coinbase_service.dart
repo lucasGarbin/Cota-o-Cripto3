@@ -15,7 +15,38 @@ class CoinbaseService {
     'Accept': 'application/json',
   };
 
+  /// Carrega criptomoedas para a tela Moedas/favoritos.
   Future<ApiResult<CurrencyResponse>> fetchCurrencies() async {
+    try {
+      final response = await http.get(
+        Uri.parse(ApiConstants.cryptoCurrencies),
+        headers: _headers,
+      );
+
+      if (!_successful(response.statusCode)) {
+        return ApiResult.failure(
+          'Erro HTTP ${response.statusCode} ao consultar criptomoedas.',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      final parsed = CurrencyResponse.fromDynamic(decoded);
+
+      if (parsed.data.isEmpty) {
+        return ApiResult.failure('A lista de criptomoedas veio vazia.');
+      }
+
+      return ApiResult.success(
+        parsed,
+        rawJson: _pretty(decoded),
+      );
+    } catch (error) {
+      return ApiResult.failure('Falha ao carregar criptomoedas: $error');
+    }
+  }
+
+  /// Mantém os nomes das moedas fiduciárias disponíveis no conversor.
+  Future<ApiResult<CurrencyResponse>> fetchFiatCurrencies() async {
     try {
       final response = await http.get(
         Uri.parse(ApiConstants.currencies),
@@ -24,21 +55,114 @@ class CoinbaseService {
 
       if (!_successful(response.statusCode)) {
         return ApiResult.failure(
-          'Erro HTTP ${response.statusCode} ao consultar moedas.',
+          'Erro HTTP ${response.statusCode} ao consultar moedas fiduciárias.',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      final parsed = CurrencyResponse.fromDynamic(decoded);
+
+      return ApiResult.success(
+        parsed,
+        rawJson: _pretty(decoded),
+      );
+    } catch (error) {
+      return ApiResult.failure(
+        'Falha ao carregar moedas fiduciárias: $error',
+      );
+    }
+  }
+
+  /// Retorna somente criptomoedas que possuem um produto SPOT negociável em USD.
+  /// Isso impede que um favorito gere um product_id inexistente no gráfico.
+  Future<ApiResult<Map<String, String>>> fetchUsdProducts() async {
+    try {
+      final query = <String, String>{
+        'product_type': 'SPOT',
+        'get_all_products': 'true',
+      };
+
+      final uri = kIsWeb
+          ? Uri.parse('${ApiConstants.webCandlesProxy}/api/products')
+              .replace(queryParameters: query)
+          : Uri.parse(ApiConstants.publicProducts)
+              .replace(queryParameters: query);
+
+      final response = await http.get(uri, headers: _headers);
+
+      if (!_successful(response.statusCode)) {
+        String detail = '';
+        try {
+          final body = jsonDecode(response.body);
+          if (body is Map && body['error'] != null) {
+            detail = ' ${body['error']}';
+          }
+        } catch (_) {}
+
+        return ApiResult.failure(
+          'Erro HTTP ${response.statusCode} ao consultar mercados.$detail',
         );
       }
 
       final decoded = jsonDecode(response.body);
       if (decoded is! Map<String, dynamic>) {
-        return ApiResult.failure('Formato de moedas inesperado.');
+        return ApiResult.failure('Formato de produtos inesperado.');
+      }
+
+      final rawProducts = decoded['products'];
+      if (rawProducts is! List) {
+        return ApiResult.failure('A resposta não contém produtos.');
+      }
+
+      final products = <String, String>{};
+
+      for (final raw in rawProducts.whereType<Map>()) {
+        final item = raw.map(
+          (key, value) => MapEntry(key.toString(), value),
+        );
+
+        final base = item['base_currency_id']?.toString().trim().toUpperCase();
+        final quote = item['quote_currency_id']?.toString().trim().toUpperCase();
+        final productId = item['product_id']?.toString().trim().toUpperCase();
+        final productType = item['product_type']?.toString().trim().toUpperCase();
+        final tradingDisabled = item['trading_disabled'] == true;
+
+        if (base == null ||
+            base.isEmpty ||
+            quote != 'USD' ||
+            productId == null ||
+            productId.isEmpty ||
+            tradingDisabled ||
+            (productType != null &&
+                productType.isNotEmpty &&
+                productType != 'SPOT')) {
+          continue;
+        }
+
+        products[base] = productId;
+      }
+
+      if (products.isEmpty) {
+        return ApiResult.failure(
+          'Nenhum mercado SPOT em USD foi retornado pela Coinbase.',
+        );
       }
 
       return ApiResult.success(
-        CurrencyResponse.fromJson(decoded),
+        products,
         rawJson: _pretty(decoded),
       );
     } catch (error) {
-      return ApiResult.failure('Falha ao carregar moedas: $error');
+      if (kIsWeb) {
+        return ApiResult.failure(
+          'Não foi possível validar os mercados no navegador. '
+          'Inicie o proxy local antes do Flutter Web usando '
+          'run_web_windows.bat (Windows) ou run_web_unix.sh (macOS/Linux). '
+          'Detalhes: $error',
+        );
+      }
+
+      return ApiResult.failure('Falha ao carregar mercados: $error');
     }
   }
 
@@ -88,9 +212,6 @@ class CoinbaseService {
         'limit': '${range.limit}',
       };
 
-      // O endpoint público de candles funciona em chamadas servidor-servidor e
-      // mobile. No Flutter Web, o navegador pode bloquear a resposta por CORS.
-      // Por isso, no Web usamos o pequeno proxy Dart incluído em /server.
       final Uri uri = kIsWeb
           ? Uri.parse('${ApiConstants.webCandlesProxy}/api/candles').replace(
               queryParameters: query,

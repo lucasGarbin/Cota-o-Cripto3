@@ -26,6 +26,8 @@ class MarketController extends ChangeNotifier {
   ChartRange _range = ChartRange.week;
   List<String> _favoriteAssets = List<String>.from(_defaultFavorites);
   List<Currency> _currencies = const [];
+  Map<String, String> _usdProducts = const {};
+  Map<String, String> _currencyNames = const {};
   ExchangeRates? _exchangeRates;
   List<MarketCandle> _candles = const [];
 
@@ -42,7 +44,8 @@ class MarketController extends ChangeNotifier {
   String? _candlesError;
 
   String get selectedAsset => _selectedAsset;
-  String get productId => '$_selectedAsset-USD';
+  String get productId =>
+      _usdProducts[_selectedAsset] ?? '$_selectedAsset-USD';
   ChartRange get range => _range;
   List<String> get favoriteAssets => List.unmodifiable(_favoriteAssets);
   List<Currency> get currencies => _currencies;
@@ -97,16 +100,18 @@ class MarketController extends ChangeNotifier {
 
   Future<void> initialize() async {
     await _loadFavorites();
+    await loadCurrencies();
+
+    _sanitizeFavorites();
 
     if (_favoriteAssets.isNotEmpty &&
         !_favoriteAssets.contains(_selectedAsset)) {
       _selectedAsset = _favoriteAssets.first;
     }
 
-    await Future.wait([
-      loadCurrencies(),
-      refreshMarket(),
-    ]);
+    await _saveFavorites();
+    notifyListeners();
+    await refreshMarket();
   }
 
   Future<void> _loadFavorites() async {
@@ -138,13 +143,45 @@ class MarketController extends ChangeNotifier {
     }
   }
 
+  void _sanitizeFavorites() {
+    if (_usdProducts.isEmpty) {
+      return;
+    }
+
+    _favoriteAssets = _favoriteAssets
+        .where((asset) => _usdProducts.containsKey(asset))
+        .toSet()
+        .toList();
+
+    if (_favoriteAssets.isNotEmpty) {
+      return;
+    }
+
+    final defaults = _defaultFavorites
+        .where((asset) => _usdProducts.containsKey(asset))
+        .toList();
+
+    if (defaults.isNotEmpty) {
+      _favoriteAssets = defaults;
+      return;
+    }
+
+    _favoriteAssets = _usdProducts.keys.take(5).toList();
+  }
+
   bool isFavorite(String asset) {
     return _favoriteAssets.contains(asset.trim().toUpperCase());
   }
 
+  bool canShowChart(String asset) {
+    return _usdProducts.containsKey(asset.trim().toUpperCase());
+  }
+
   Future<void> toggleFavorite(String asset) async {
     final normalized = asset.trim().toUpperCase();
-    if (normalized.isEmpty) return;
+    if (normalized.isEmpty || !canShowChart(normalized)) {
+      return;
+    }
 
     final wasFavorite = _favoriteAssets.contains(normalized);
 
@@ -154,28 +191,30 @@ class MarketController extends ChangeNotifier {
       _favoriteAssets.add(normalized);
     }
 
+    // Se a moeda selecionada foi removida, muda para outra favorita válida
+    // antes de redesenhar o Dashboard. Assim não existe um estado intermediário
+    // com um ativo selecionado que já não pertence aos atalhos.
+    final removedSelected =
+        wasFavorite && normalized == _selectedAsset;
+
+    if (removedSelected && _favoriteAssets.isNotEmpty) {
+      _selectedAsset = _favoriteAssets.first;
+      _exchangeRates = null;
+      _candles = const [];
+      _ratesError = null;
+      _candlesError = null;
+    }
+
     await _saveFavorites();
     notifyListeners();
 
-    // Se a moeda selecionada deixou de ser favorita, seleciona a primeira
-    // favorita restante para manter os atalhos do Dashboard coerentes.
-    if (wasFavorite &&
-        normalized == _selectedAsset &&
-        _favoriteAssets.isNotEmpty) {
-      await selectAsset(_favoriteAssets.first);
+    if (removedSelected && _favoriteAssets.isNotEmpty) {
+      await refreshMarket();
     }
   }
 
   String? currencyName(String code) {
-    final normalized = code.trim().toUpperCase();
-
-    for (final currency in _currencies) {
-      if (currency.id.toUpperCase() == normalized) {
-        return currency.name;
-      }
-    }
-
-    return null;
+    return _currencyNames[code.trim().toUpperCase()];
   }
 
   Future<void> loadCurrencies() async {
@@ -183,15 +222,49 @@ class MarketController extends ChangeNotifier {
     _currenciesError = null;
     notifyListeners();
 
-    final result = await _service.fetchCurrencies();
+    final productsResult = await _service.fetchUsdProducts();
+    final cryptoResult = await _service.fetchCurrencies();
+    final fiatResult = await _service.fetchFiatCurrencies();
 
     _loadingCurrencies = false;
-    if (result.isSuccess) {
-      _currencies = result.data!.data;
-      _currenciesJson = result.rawJson;
-    } else {
-      _currenciesError = result.error;
+
+    if (!productsResult.isSuccess) {
+      _currenciesError = productsResult.error;
+      _usdProducts = const {};
+      notifyListeners();
+      return;
     }
+
+    _usdProducts = productsResult.data!;
+
+    if (!cryptoResult.isSuccess) {
+      _currenciesError = cryptoResult.error;
+      notifyListeners();
+      return;
+    }
+
+    // A tela Moedas exibe somente criptomoedas para as quais existe um
+    // produto SPOT em USD. Portanto, qualquer moeda favoritada daqui possui
+    // um product_id válido para o endpoint de candles.
+    _currencies = cryptoResult.data!.data
+        .where((currency) => _usdProducts.containsKey(currency.id))
+        .toList()
+      ..sort((a, b) => a.id.compareTo(b.id));
+
+    _currenciesJson = cryptoResult.rawJson;
+
+    final names = <String, String>{};
+    for (final currency in cryptoResult.data!.data) {
+      names[currency.id] = currency.name;
+    }
+    if (fiatResult.isSuccess) {
+      for (final currency in fiatResult.data!.data) {
+        names[currency.id] = currency.name;
+      }
+    }
+    _currencyNames = names;
+
+    _sanitizeFavorites();
     notifyListeners();
   }
 
@@ -203,11 +276,19 @@ class MarketController extends ChangeNotifier {
   }
 
   Future<void> loadRates() async {
+    final assetAtRequestStart = _selectedAsset;
+
     _loadingRates = true;
     _ratesError = null;
     notifyListeners();
 
-    final result = await _service.fetchExchangeRates(_selectedAsset);
+    final result = await _service.fetchExchangeRates(assetAtRequestStart);
+
+    // Ignora uma resposta antiga caso o usuário tenha trocado de favorito
+    // antes da requisição terminar.
+    if (assetAtRequestStart != _selectedAsset) {
+      return;
+    }
 
     _loadingRates = false;
     if (result.isSuccess) {
@@ -220,14 +301,34 @@ class MarketController extends ChangeNotifier {
   }
 
   Future<void> loadCandles() async {
+    final assetAtRequestStart = _selectedAsset;
+    final rangeAtRequestStart = _range;
+    final productAtRequestStart = productId;
+
+    if (!canShowChart(assetAtRequestStart)) {
+      _candles = const [];
+      _candlesError =
+          'Histórico indisponível para $assetAtRequestStart em USD.';
+      _loadingCandles = false;
+      notifyListeners();
+      return;
+    }
+
     _loadingCandles = true;
     _candlesError = null;
     notifyListeners();
 
     final result = await _service.fetchCandles(
-      productId: productId,
-      range: _range,
+      productId: productAtRequestStart,
+      range: rangeAtRequestStart,
     );
+
+    // Evita que uma resposta de um favorito anterior sobrescreva o gráfico
+    // da moeda atualmente selecionada.
+    if (assetAtRequestStart != _selectedAsset ||
+        rangeAtRequestStart != _range) {
+      return;
+    }
 
     _loadingCandles = false;
     if (result.isSuccess) {
@@ -249,6 +350,8 @@ class MarketController extends ChangeNotifier {
     _selectedAsset = normalized;
     _exchangeRates = null;
     _candles = const [];
+    _ratesError = null;
+    _candlesError = null;
     notifyListeners();
     await refreshMarket();
   }
