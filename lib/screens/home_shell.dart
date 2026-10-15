@@ -101,21 +101,41 @@ class _HomeShellState extends State<HomeShell> {
           appBar: AppBar(
             toolbarHeight: 76,
             titleSpacing: 20,
-            title: RichText(
-              text: TextSpan(
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-                children: [
-                  const TextSpan(text: 'Cotação '),
-                  TextSpan(
-                    text: 'Cripto3',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.asset(
+                    'assets/branding/app_icon.png',
+                    width: 40,
+                    height: 40,
+                    fit: BoxFit.cover,
+                    semanticLabel: 'Logo Cotação Cripto3',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: RichText(
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    text: TextSpan(
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                      children: [
+                        const TextSpan(text: 'Cotação '),
+                        TextSpan(
+                          text: 'Cripto3',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
             actions: [
               TextButton(

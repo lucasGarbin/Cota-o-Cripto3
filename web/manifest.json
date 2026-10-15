@@ -3,9 +3,21 @@
   "short_name": "Cripto3",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#06131F",
-  "theme_color": "#06131F",
+  "background_color": "#06192B",
+  "theme_color": "#06192B",
   "description": "Cotação Cripto3 em Flutter",
   "orientation": "portrait-primary",
-  "prefer_related_applications": false
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icons/Icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/Icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
 }

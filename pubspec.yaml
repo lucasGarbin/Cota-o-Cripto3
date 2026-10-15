@@ -1,7 +1,7 @@
 name: cotacao_cripto3
 description: Cotação Cripto3 - Flutter + Coinbase API com gráficos históricos nativos.
 publish_to: "none"
-version: 2.3.0+5
+version: 2.4.1+7
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -19,3 +19,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/branding/
